@@ -1,0 +1,28 @@
+{
+  "name": "elitea-doc-sync-sailaja",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/run.js",
+    "publish": "node src/publish.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sailaja103/elitea-doc-sync-sailaja.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sailaja103/elitea-doc-sync-sailaja/issues"
+  },
+  "homepage": "https://github.com/sailaja103/elitea-doc-sync-sailaja#readme",
+  "dependencies": {
+    "@octokit/rest": "^22.0.1",
+    "axios": "^1.20.0",
+    "dotenv": "^18.0.6"
+  }
+}
