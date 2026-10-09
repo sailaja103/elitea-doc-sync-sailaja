@@ -7,7 +7,8 @@
     "start": "node src/run.js",
     "publish": "node src/publish.js",
     "test": "playwright test",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "build": "npm ci && npm test"
   },
   "repository": {
     "type": "git",
