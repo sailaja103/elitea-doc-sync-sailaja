@@ -15,9 +15,10 @@ function confluenceAuthHeader() {
   return `Basic ${auth}`;
 }
 
-async function confluenceGetTemplate({ templatePageId }) {
+async function confluenceGetTemplate() {
   const base = must("CONFLUENCE_BASE_URL").replace(/\/$/, "");
-  const url = `${base}/rest/api/content/${templatePageId}?expand=body.storage,space`;
+  const pageId = must("CONFLUENCE_TEMPLATE_PAGE_ID");
+  const url = `${base}/rest/api/content/${pageId}?expand=body.storage,space`;
 
   const res = await axios.get(url, {
     headers: {
@@ -27,9 +28,9 @@ async function confluenceGetTemplate({ templatePageId }) {
   });
 
   return {
-    templateHtml: res.data.body.storage.value, // storage HTML
+    templateHtml: res.data.body.storage.value, // Confluence storage HTML
     spaceKey: res.data.space.key,
-    spaceId: res.data.space.id, // numeric string in many tenants
+    spaceId: res.data.space.id,
     templateTitle: res.data.title,
   };
 }
@@ -56,7 +57,7 @@ async function confluenceCreatePageV2({ spaceId, title, storageHtml }) {
     },
   });
 
-  return res.data; // contains id, title, etc.
+  return res.data; // { id, title, ... }
 }
 
 async function githubReadFile({ owner, repo, path }) {
@@ -64,6 +65,31 @@ async function githubReadFile({ owner, repo, path }) {
   const res = await octokit.rest.repos.getContent({ owner, repo, path });
   if (Array.isArray(res.data)) return null;
   return Buffer.from(res.data.content, "base64").toString("utf8");
+}
+
+function strictOrNotFound(v) {
+  if (v === null || v === undefined) return "Not Found";
+  const s = String(v).trim();
+  return s ? s : "Not Found";
+}
+
+function extractDescription({ pkg, readme }) {
+  // Strict preference: package.json description
+  const d1 = strictOrNotFound(pkg.description || "");
+  if (d1 !== "Not Found") return d1;
+
+  // Fallback: first meaningful non-heading line in README
+  const lines = (readme || "").split("\n").map((l) => l.trim());
+  const candidate =
+    lines.find((l) => l && !l.startsWith("#") && !l.startsWith(">")) || "";
+  return strictOrNotFound(candidate);
+}
+
+function extractRunInstructions(readme) {
+  if (!readme) return "Not Found";
+  const m = readme.match(/##\s*Run\s*([\s\S]*?)(\n##|\n#|$)/i);
+  if (!m || !m[1]) return "Not Found";
+  return strictOrNotFound(m[1]);
 }
 
 async function githubGetRepoFacts() {
@@ -85,67 +111,52 @@ async function githubGetRepoFacts() {
     pkg = {};
   }
 
-  // Strict extraction: no guessing, only simple derivations
-  const APP_NAME = pkg.name || "Not Found";
-
-  let APP_DESCRIPTION = pkg.description || "";
-  if (!APP_DESCRIPTION) {
-    // Take first non-heading non-empty line from README as fallback
-    const lines = readme.split("\n").map((l) => l.trim());
-    const candidate =
-      lines.find((l) => l && !l.startsWith("#") && !l.startsWith(">")) || "";
-    APP_DESCRIPTION = candidate || "Not Found";
-  }
-
-  const REPO_URL = `https://github.com/${owner}/${repo}`;
-
-  // For JS sample, keep tech stack simple and factual
-  const TECH_STACK = "Node.js, Express";
-
   const deps =
     pkg.dependencies && typeof pkg.dependencies === "object"
       ? Object.keys(pkg.dependencies)
       : [];
-  const DEPENDENCIES = deps.length ? deps.join(", ") : "Not Found";
 
-  // Try to extract "Run" section
-  let RUN_INSTRUCTIONS = "Not Found";
-  const runMatch = readme.match(/##\s*Run\s*([\s\S]*?)(\n##|\n#|$)/i);
-  if (runMatch && runMatch[1] && runMatch[1].trim()) {
-    RUN_INSTRUCTIONS = runMatch[1].trim();
-  }
-
+  // Keys MUST match template placeholders exactly:
   return {
-    APP_NAME,
-    APP_DESCRIPTION,
-    REPO_URL,
-    TECH_STACK,
-    RUN_INSTRUCTIONS,
-    DEPENDENCIES,
+    APP_NAME: strictOrNotFound(pkg.name),
+    APP_DESCRIPTION: extractDescription({ pkg, readme }),
+    REPO_URL: `https://github.com/${owner}/${repo}`,
+    TECH_STACK: "Node.js, Express",
+    RUN_INSTRUCTIONS: extractRunInstructions(readme),
+    DEPENDENCIES: deps.length ? deps.join(", ") : "Not Found",
   };
 }
 
 function renderTemplate(templateHtml, facts) {
-  // Replace placeholders like {{APP_NAME}}
+  // Replace placeholders like {{APP_NAME}}.
+  // Leave unknown placeholders unchanged.
   return templateHtml.replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, key) => {
     if (Object.prototype.hasOwnProperty.call(facts, key)) return facts[key];
-    return match; // leave unknown placeholders unchanged
+    return match;
   });
+}
+
+function buildTitle(appName) {
+  const base = `${appName} - Technical Profile (Auto-Generated)`;
+  const unique = process.env.UNIQUE_TITLE === "true";
+  if (!unique) return base;
+
+  // Make it file/title safe
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${base} (${ts})`;
 }
 
 (async () => {
   try {
-    const templatePageId = must("CONFLUENCE_TEMPLATE_PAGE_ID");
-
-    const template = await confluenceGetTemplate({ templatePageId });
+    const template = await confluenceGetTemplate();
     const facts = await githubGetRepoFacts();
 
     const finalHtml = renderTemplate(template.templateHtml, facts);
-    const pageTitle = `${facts.APP_NAME} - Technical Profile (Auto-Generated)`;
+    const title = buildTitle(facts.APP_NAME);
 
     const created = await confluenceCreatePageV2({
       spaceId: template.spaceId,
-      title: pageTitle,
+      title,
       storageHtml: finalHtml,
     });
 
@@ -155,9 +166,7 @@ function renderTemplate(templateHtml, facts) {
     console.log("Created title:", created.title);
     console.log("Open page:", `${base}/spaces/${template.spaceKey}/pages/${created.id}`);
   } catch (err) {
-    const status = err?.response?.status;
-    const data = err?.response?.data;
-    console.error("ERROR:", status || "", data || err.message);
+    console.error("ERROR:", err.response?.status, err.response?.data || err.message);
     process.exit(1);
   }
 })();

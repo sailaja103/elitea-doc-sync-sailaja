@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/run.js",
     "publish": "node src/publish.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "playwright test",
+    "test:report": "playwright show-report"
   },
   "repository": {
     "type": "git",
@@ -24,5 +25,8 @@
     "@octokit/rest": "^22.0.1",
     "axios": "^1.20.0",
     "dotenv": "^18.0.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
   }
 }
