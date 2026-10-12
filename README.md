@@ -19,3 +19,9 @@ Node.js tool to generate and publish a “Technical Profile (Auto-Generated)” 
 ## Setup
 ```bash
 npm install
+
+## Demo Steps
+npm start
+npm run publish
+npm test
+npx playwright show-report
